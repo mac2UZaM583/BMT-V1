@@ -1,6 +1,5 @@
 from pybit.unified_trading import HTTP
 import time
-from numba import jit, njit, prange
 import asyncio
 import numpy as np
 import pickle
@@ -24,7 +23,7 @@ def s_time_meter(func):
     return wrapper
 
 '''
-1 ⭣
+G ⭣
 '''
 def g_symbols() -> NDArray:
     return np.array(tuple(
@@ -47,17 +46,14 @@ async def g_klines(data: NDArray) -> list[dict]:
     ]
     return await asyncio.gather(*tasks)
 
-def g_data_filtered(data: list[dict]) -> NDArray:
+def g_symbols_filtered(data: list[dict]) -> NDArray:
     symbols, klines = zip(*(
         (value['symbol'], value['list'][0])
         for value in np.array(data)
     ))
-    return np.array(symbols, dtype=np.str_), np.float32(klines)
-
-def g_symbols_filtered(data: tuple) -> NDArray:
     return np.array(tuple(
         symbol
-        for symbol, klines in zip(*data)
+        for symbol, klines in (np.array(symbols, dtype=np.str_), np.float32(klines))
         if (lambda v: v >= 5_000 and v <= 40_000)(klines[5])
     ), dtype=np.str_)
 
@@ -74,25 +70,19 @@ async def g_orderbook(symbols: NDArray) -> list[dict]:
     ]
     return await asyncio.gather(*tasks)
 
-def g_densities(data: list[dict]) -> tuple[str, tuple]:
-    def get_density(value: dict[str, list], sides: tuple[str]):
+def g_densities(data):
+    def g_density(value, sides):
         return (
             np.str_(value['s']),
             np.array(tuple(
-                (lambda v: (lambda v_1: np.min(v_1[:, 0]) if side == 'a' else np.max(v_1[:, 0]))(
-                    v[np.argmax(np.diff(v[:, 1])):]))(
-                        np.array(sorted(np.float32(value[side]), key=lambda x: x[1], reverse=True if side == 'b' else False))
-                    )
+                (
+                    lambda v: (
+                        lambda v_1: np.min(v_1[:, 0]) if side == 'a' else np.max(v_1[:, 0])
+                        )(v[np.argmax(np.diff(v[:, 1])):])
+                )(np.array(sorted(np.float32(value[side]), key=lambda x: x[1], reverse=True if side == 'b' else False)))
                 for side in sides
         )))
-    sides = ('a', 'b')
-    return tuple(
-        get_density(value, sides)
-        for value in data
-    )
-
-def g_densities_filtered(data: tuple) -> tuple[NDArray]:
-    def g_change_percent(data: tuple[str, tuple]) -> tuple[str, NDArray]:
+    def g_density_filtered(data):
         v_1 = data[1][0]
         v_2 = data[1][1]
         return (
@@ -103,8 +93,12 @@ def g_densities_filtered(data: tuple) -> tuple[NDArray]:
                 v_2
             ))
         )
+    data = tuple(
+        g_density(value, ('a', 'b'))
+        for value in data
+    )
     symbols, values = zip(*(
-        g_change_percent(value)
+        g_density_filtered(value)
         for value in data
     ))
     values = np.array(values)
@@ -115,54 +109,62 @@ def g_densities_filtered(data: tuple) -> tuple[NDArray]:
         values[:, [1, 2]][indeces]
     )
 
-'''
-2 ⭣
-'''
-async def g_symbols_data_filtered(data: tuple[NDArray]) -> tuple[NDArray]:
-    # (((symbols), (buy), ((price_buy, price_sell),) (qty)), 
-    # ((symbols), (orders_id)))
-    
-    filtered_limit_orders = np.array([
-        (order['symbol'], order['side'])
-        for order in session.get_open_orders(category='spot', settleCoin='USDT')['result']['list']
-        if order['symbol'] in data[0] and order['orderType'] == 'Limit'
-    ], dtype=[('symbol', 'U10'), ('side', 'U10')])
-    return tuple(
-        (symbol, np.array(filtered_limit_orders['side'][filtered_limit_orders['symbol'] == symbol])) 
-        for symbol in np.unique(filtered_limit_orders['symbol'])
-    )
-
-async def g_round_qty(symbol: str) -> NDArray:
-    data = session.get_instruments_info(
-        category='spot',
-        symbol=symbol
-    )['result']['list'][0]
-    return np.array(tuple(map(
+async def g_round_qtys(symbols):
+    async def g_round_qty(symbol):
+        data = session.get_instruments_info(
+            category='spot',
+            symbol=symbol
+        )['result']['list'][0]
+        return np.array(tuple(map(
             lambda v: len(sub(r'^.*?\.', '', v)), 
             (data['lotSizeFilter']['minOrderQty'], data['priceFilter']['tickSize'])
-    )))
-
-async def g_balance() -> float:
-    return np.float16(session.get_wallet_balance(
-        accountType='UNIFIED', 
-        coin='USDT'
-    )['result']['list'][0]['coin'][0]['availableToWithdraw'])
-
-async def g_data_for_place_orders() -> list:
-    '''
-    (array(symbols), array(sides), )
-    
-    '''
-    
+        )))
     tasks = [
         g_round_qty(symbol)
-        for symbol in g_symbols_data_filtered(g_densities_filtered(g_densities(
-            asyncio.run(g_orderbook(g_symbols_filtered(g_data_filtered(
-                asyncio.run(g_klines(g_symbols()))
-            ))))
-        )))
-    ].extend(g_balance())
+        for symbol in symbols
+    ]
     return await asyncio.gather(*tasks)
+
+async def g_data(data):
+    tasks = [
+        g_round_qtys(data[0]),
+        asyncio.to_thread(
+            lambda: session.get_open_orders(
+                category='spot'
+            )['result']['list']
+        ),
+        asyncio.to_thread(
+            lambda: session.get_wallet_balance(
+                accountType=files_content['ACCOUNT_TYPE']
+            )['result']['list'][0]['coin']
+        )
+    ]
+    return await (
+        asyncio.gather(*tasks),
+        data
+    )
+
+'''
+S ⭣
+'''
+@s_time_meter
+def s_packing_data(data) -> list:
+    pprint(data)
+    # нужно определить сколько buy и sell в каждой из монеты
+    
+
+    # (((symbols), (buy), ((price_buy, price_sell),) (qty)), 
+    # ((symbols), (orders_id)))
+    '''
+    if not limit_orders: place_order_buy
+    if orders_buy < 4: cancel_order & place_order_sell_limit
+    if orders_sell < 4 place_order_sell_market
+    if mark_price < density_price: place_order_sell
+
+    '''
+with open('data_1.pkl', 'rb') as f:
+    data = pickle.load(f)
+s_packing_data(data)
 
 async def s_cancel_orders():
     tasks = [
@@ -176,14 +178,6 @@ async def s_cancel_orders():
     await asyncio.gather(*tasks)
 
 async def s_places_orders(data):
-    '''
-    if not limit_orders: place_order_buy (tpsl)
-    if orders_buy < 4: cancel_order
-    if orders_sell < 4 place_order_sell
-    if mark_price < density_price: place_order_sell
-
-    '''
-    
     tasks = [
         session.place_order(
             category='spot',
@@ -200,15 +194,15 @@ async def s_places_orders(data):
     await asyncio.gather(*tasks)
 
 
-
-with open('data.pkl', 'rb') as f:
-    data = pickle.load(f)
-pprint(
-    g_symbols_data_filtered(
-        g_densities_filtered(g_densities(data))
-    )
-)
-
+# session.place_order(
+#     category='spot',
+#     symbol='BLOCKUSDT',
+#     orderType='Limit',
+#     price='0.055',
+#     qty='200',
+#     side='Buy',
+#     spotLoss='0.05'
+# )
 
 
 # with open('data.pkl', 'wb') as f:
