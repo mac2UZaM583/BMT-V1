@@ -10,7 +10,7 @@ from pprint import pprint
 async def g_symbols():
     '''
     RETURNS:
-    NDarray[str]: the list of filtered symbols
+    NDarray[str]:: the list of filtered symbols
 
     '''
     symbols = np.array(tuple(
@@ -44,15 +44,15 @@ async def g_symbols():
     '''
     data_clean_2_volumes = np.float32(klines[:, 1])
     return klines[:, 0][np.where(
-        (data_clean_2_volumes > 5_000) & 
-        (data_clean_2_volumes < 70_000)
+        (data_clean_2_volumes > 10_000) & 
+        (data_clean_2_volumes < 50_000)
     )]
 
 @s_time_meter
 async def g_densities(symbols):
     '''
     ARGS:
-    data (NDarray[str]): numpy array with symbols
+    data (NDarray[str]):: numpy array with symbols
     
     RETURNS:
     NDarray[tuple]:
@@ -80,20 +80,27 @@ async def g_densities(symbols):
     for value in orderbook:
         a = np.array(value['a'], dtype=np.float32)
         b = np.array(value['b'], dtype=np.float32)
-        a_diff = a[np.argmax(a[:, 1])][0]
-        b_diff = b[np.argmax(b[:, 1])][0]
+        a_diff = a[np.argmax(a[:, 1])]
+        b_diff = b[np.argmax(b[:, 1])]
+        a_diff_i_0 = a_diff[0]
+        b_diff_i_0 = b_diff[0]
         
         if (
-            a_diff / b_diff >= 1.03 and
-            a_diff / b_diff <= 1.07
+            a_diff[1] < b_diff[1] and
+            (
+                a_diff_i_0 / b_diff_i_0 >= 1.03 and
+                a_diff_i_0 / b_diff_i_0 <= 1.07
+            )
         ):
             densities.append((
                 np.str_(value['s']),
-                np.array((a_diff, b_diff))
+                np.array((a_diff_i_0, b_diff_i_0))
             ))
     return tuple(densities)
 
-pprint(asyncio.run(g_densities(asyncio.run(g_symbols()))))
+pprint(
+    asyncio.run(g_densities(asyncio.run(g_symbols())))
+)
 
 async def g_round_qtys(symbols):
     async def g_round_qty(symbol):
