@@ -1,14 +1,20 @@
 from session_ import session
 from settings_ import files_content
+from set import s_time_meter
+
 import numpy as np
-from numpy.typing import NDArray
 import asyncio
 from re import sub
 from pprint import pprint
 
 async def g_symbols():
-    data_clean_1= np.array(tuple(
-        value['symbol']
+    '''
+    RETURNS:
+    NDarray[str]: the list of filtered symbols
+
+    '''
+    symbols = np.array(tuple(
+        (value['symbol'], value['lastPrice'])
         for value in session.get_tickers(
             category='spot'
         )['result']['list']
@@ -20,81 +26,74 @@ async def g_symbols():
     
     tasks = [
         asyncio.to_thread(
-            lambda value=value: np.array((
-                value,
-                session.get_kline(
+            lambda symbol=symbol: np.array((
+                symbol,
+                str(float(session.get_kline(
                     category='spot', 
-                    symbol=value, 
+                    symbol=symbol, 
                     interval='30', 
                     limit=1
-                )['result']['list'][0][5]
+                )['result']['list'][0][5]) * float(last_price))
             ))
         )
-        for value in data_clean_1
+        for symbol, last_price in symbols
     ]
-    data_clean_2 = np.array(await asyncio.gather(*tasks))
+    klines = np.array(await asyncio.gather(*tasks))
 
     '''SET ⭣
     '''
-    data_clean_2_volumes = np.float32(data_clean_2[:, 1])
-    return data_clean_2[:, 0][np.where(
+    data_clean_2_volumes = np.float32(klines[:, 1])
+    return klines[:, 0][np.where(
         (data_clean_2_volumes > 5_000) & 
-        (data_clean_2_volumes < 40_000)
+        (data_clean_2_volumes < 70_000)
     )]
 
-pprint(asyncio.run(g_symbols()))
-
-async def g_orderbook(symbols):
+@s_time_meter
+async def g_densities(symbols):
+    '''
+    ARGS:
+    data (NDarray[str]): numpy array with symbols
+    
+    RETURNS:
+    NDarray[tuple]:
+    tuple[str, NDarray[float]]:: {
+        tuple with the orderbook symbol, 
+        NDarray with the density price 'a' and 'b'
+    }
+     
+    '''
     tasks = [
         asyncio.to_thread(
             lambda symbol=symbol: session.get_orderbook(
                 category='spot', 
                 symbol=symbol, 
-                limit=30
+                limit=50
             )['result']
         )
         for symbol in symbols
     ]
-    return await asyncio.gather(*tasks)
+    orderbook = await asyncio.gather(*tasks)
 
-def g_densities(data):
-    def g_density(value, sides):
-        return (
-            np.str_(value['s']),
-            np.array(tuple(
-                (
-                    lambda v: (
-                        lambda v_1: np.min(v_1[:, 0]) if side == 'a' else np.max(v_1[:, 0])
-                        )(v[np.argmax(np.diff(v[:, 1])):])
-                )(np.array(sorted(np.float32(value[side]), key=lambda x: x[1], reverse=True if side == 'b' else False)))
-                for side in sides
-        )))
-    def g_density_filtered(data):
-        v_1 = data[1][0]
-        v_2 = data[1][1]
-        return (
-            data[0],
-            np.array((
-                (v_1 / (v_2 / 100)) - 100, 
-                v_1, 
-                v_2
+    '''SET ⭣
+    '''
+    densities = []
+    for value in orderbook:
+        a = np.array(value['a'], dtype=np.float32)
+        b = np.array(value['b'], dtype=np.float32)
+        a_diff = a[np.argmax(a[:, 1])][0]
+        b_diff = b[np.argmax(b[:, 1])][0]
+        
+        if (
+            a_diff / b_diff >= 1.03 and
+            a_diff / b_diff <= 1.07
+        ):
+            densities.append((
+                np.str_(value['s']),
+                np.array((a_diff, b_diff))
             ))
-        )
-    data = tuple(
-        g_density(value, ('a', 'b'))
-        for value in data
-    )
-    symbols, values = zip(*(
-        g_density_filtered(value)
-        for value in data
-    ))
-    values = np.array(values)
-    v_indeces = values[:, 0]
-    indeces = np.where((v_indeces >= 4) & (v_indeces <= 7))
-    return (
-        np.array(symbols)[indeces[0]], 
-        values[:, [1, 2]][indeces]
-    )
+    return tuple(densities)
+
+pprint(asyncio.run(g_densities(asyncio.run(g_symbols()))))
 
 async def g_round_qtys(symbols):
     async def g_round_qty(symbol):
