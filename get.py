@@ -52,7 +52,7 @@ async def g_symbols():
 async def g_densities(symbols):
     '''
     ARGS:
-    data (NDarray[str]):: numpy array with symbols
+    symbols (NDarray[str]):: numpy array with symbols
     
     RETURNS:
     NDarray[tuple]:
@@ -98,25 +98,37 @@ async def g_densities(symbols):
             ))
     return tuple(densities)
 
-pprint(
-    asyncio.run(g_densities(asyncio.run(g_symbols())))
-)
-
-async def g_round_qtys(symbols):
+async def g_round_qtys(data):
+    '''
+    ARGS:
+    data (tuple[tuple]): 
+    tuple[str, NDarray]:: tuple with symbol and densities
+    
+    RETURNS:
+    NDarray[list[int]]:: the number of decimal places to round off
+    
+    '''
     async def g_round_qty(symbol):
-        data = session.get_instruments_info(
+        instruments_info = session.get_instruments_info(
             category='spot',
             symbol=symbol
         )['result']['list'][0]
+        
+        '''SET ⭣
+        '''
         return np.array(tuple(map(
             lambda v: len(sub(r'^.*?\.', '', v)), 
-            (data['lotSizeFilter']['minOrderQty'], data['priceFilter']['tickSize'])
+            (instruments_info['lotSizeFilter']['minOrderQty'], instruments_info['priceFilter']['tickSize'])
         )))
+    
     tasks = [
         g_round_qty(symbol)
-        for symbol in symbols
+        for symbol in np.array([
+            value[0]
+            for value in data
+        ])
     ]
-    return await asyncio.gather(*tasks)
+    return np.array(await asyncio.gather(*tasks))
 
 async def g_data(data):
     tasks = [
@@ -136,3 +148,8 @@ async def g_data(data):
         asyncio.gather(*tasks),
         data
     )
+
+if __name__ == '__main__':
+    densities = asyncio.run(g_densities(asyncio.run(g_symbols())))
+    round_qtys = asyncio.run(g_round_qtys(densities))
+    pprint(round_qtys)
