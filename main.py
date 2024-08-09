@@ -20,15 +20,12 @@ async def main():
         
         changing_data = await g_non_changing_data()
         start = time.time()
-        while start - time.time() < float(files_content['CYCLE_UPDATE']):
+        while start - time.time() < float(files_content['CYCLE_UPDATE']) and changing_data[0]:
             data = await g_data_f(
-                *changing_data, *await g_changing_data(changing_data[0])
+                *changing_data, 
+                *await g_changing_data(changing_data[0])
             )
             await s_data(data)
-            pprint(data)
 
 if __name__ == '__main__':
     asyncio.run(main())
-
-
-

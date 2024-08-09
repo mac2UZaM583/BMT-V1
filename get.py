@@ -160,12 +160,31 @@ async def g_changing_data(densities):
     )
     return await asyncio.gather(*tasks)
 
+async def g_coins_non_works(open_orders, round_qtys):  
+    res = tuple(
+        symbol
+        for symbol in round_qtys 
+        if next((
+            symbol_if
+            for symbol_if, value in open_orders.items()
+            if symbol_if == symbol and
+            (not value[0] and not value[1])
+
+        ), False)
+    )
+    pprint(open_orders)
+    pprint(res)
+    pprint('/////')
+    if res:
+        return res
+    return np.zeros(len(round_qtys))
+
 async def g_data_f(
         densities, 
         round_qtys, 
-        orders_open, 
+        open_orders, 
         wallet_balance
-    ):
+):
     async def g_data_fcc(
             symbol, 
             density_tple, 
@@ -173,11 +192,13 @@ async def g_data_f(
             round_qty,
             round_price,
             round_price_float,
-            orders_open, 
-            wallet_balance
-        ):
+            open_orders, 
+            wallet_balance,
+            coins_non_work
+    ):
         from set import s_round
-        
+
+        coins_non_work = await coins_non_work
         # BUY
         last_price = float(session.get_tickers(
             category='spot', 
@@ -185,7 +206,8 @@ async def g_data_f(
         )['result']['list'][0]['lastPrice'])
         side = 'Buy'
         order_type = 'Limit'
-        qty = s_round((wallet_balance['USDT'] / len(round_qtys) / 4) / last_price, round_qty)
+        coin = symbol.rstrip('USDT').rstrip('USDC')
+        qty = s_round((wallet_balance['USDT'] / len(coins_non_work) / 4) / last_price, round_qty)
         side_density_price = density_tple[1]
         price = lambda i: s_round(side_density_price + round_price_float * (i + 1), round_price)
 
@@ -196,24 +218,24 @@ async def g_data_f(
             if symbol_if == symbol.rstrip('USDT').rstrip('USDC')
         ), 0) >= float(round_qtys[symbol][0][0]):
             side = 'Sell' 
-            qty = s_round(wallet_balance[symbol] / 4, round_qty)
+            qty = s_round(wallet_balance[coin] / 4, round_qty)
             round_price_float = -round_price_float
             side_density_price = density_tple[0]
             if density_tple[0] <  last_price:
                 order_type = 'Market' 
-                qty = s_round(wallet_balance[symbol], round_qty)
+                qty = s_round(wallet_balance[coin], round_qty)
         
         '''SET ⭣
         '''
         if order_type == 'Limit':
-            if not orders_open[symbol][1]:
+            if not open_orders[symbol][1]:
                 for i in range(4):
                     open.append(np.array(
                         (symbol, price(i), qty, side, order_type), 
                         dtype=np.str_
                     ))
             else:
-                for i in range(len(orders_open[symbol][1][0])):
+                for i in range(len(open_orders[symbol][1][0])):
                     open.append(np.array(
                         (symbol, price(i), qty, side, order_type), 
                         dtype=np.str_
@@ -225,22 +247,27 @@ async def g_data_f(
     cancel = []
     open = []
     tasks = [
-        g_data_fcc(
+        asyncio.create_task(g_data_fcc(
             symbol, 
             tple, 
-            round_qtys, 
+            round_qtys,
             *round_qtys[symbol][1],
             float(round_qtys[symbol][0][1]),
-            orders_open, 
-            wallet_balance
-        )
+            open_orders, 
+            wallet_balance,
+            asyncio.create_task(g_coins_non_works(open_orders, round_qtys))
+        ))
         for symbol, tple in densities.items()
-        if not orders_open[symbol][0]
+        if not open_orders[symbol][0]
     ]
-    cancel_append(orders_open)
+    print('cancel_append')
+    cancel_append(open_orders)
+    pprint(cancel)
+    print('tasks_work')
     await asyncio.gather(*tasks)
     return cancel, open
 
 if __name__ == '__main__':
-    pprint(asyncio.run(g_round_qtys(('WELLUSDT', 'WELLUSDT'))))
+    round_qtys = ('ETHUSDT',)
+
     pass

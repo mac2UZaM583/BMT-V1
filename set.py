@@ -8,10 +8,9 @@ import traceback
 from pprint import pprint
 
 def s_round(value, round):
-    lst = str(value).split('.')
-    lst[1] = lst[1][:round]
-    if round == 0:
-        return ''.join(lst)
+    lst = str(f'{value:.{round}f}').split('.')
+    if len(lst) > 1:
+        lst[1] = lst[1][:round]
     return '.'.join(lst)
 
 async def s_cancel_order(data):
