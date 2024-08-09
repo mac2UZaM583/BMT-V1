@@ -3,7 +3,6 @@ from settings_ import files_content
 
 import numpy as np
 import asyncio
-from re import sub
 from pprint import pprint
 import time
 
@@ -86,14 +85,19 @@ async def g_round_qtys(symbols):
             instruments_info['lotSizeFilter']['minOrderQty'],
             instruments_info['priceFilter']['tickSize']
         )
-
+        def sub(value):
+            for index, el in enumerate(value):
+                if el == '.':
+                    return len(value[index+1:])
+            return 0
+                
         '''SET ⭣
         '''
         return {
             symbol: 
             (
                 tple,
-                tuple(map(lambda v: len(sub(r'^.*?\.', '', v)), tple))
+                tuple(map(lambda v: sub(v), tple))
             )
         }
     
@@ -127,11 +131,11 @@ async def g_validate_open_orders(symbols):
     return dct
 
 def cancel_append(dct):
-    cancel_ = tuple(
+    global cancel
+    cancel = tuple(
         (symbol, v_['orderId'])
         for symbol, value in dct.items() for v in value[1] for v_ in v
     )
-    cancel.append(cancel_) if cancel_ else None
 
 async def g_wallet_balance():
     data = session.get_wallet_balance(
@@ -172,11 +176,8 @@ async def g_data_f(
             orders_open, 
             wallet_balance
         ):
-        def s_round(value, round):
-            lst = str(value).split('.')
-            lst[1] = lst[1][:round]
-            return '.'.join(lst)
-
+        from set import s_round
+        
         # BUY
         last_price = float(session.get_tickers(
             category='spot', 
@@ -241,4 +242,5 @@ async def g_data_f(
     return cancel, open
 
 if __name__ == '__main__':
+    pprint(asyncio.run(g_round_qtys(('WELLUSDT', 'WELLUSDT'))))
     pass

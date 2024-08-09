@@ -1,10 +1,18 @@
 from session_ import session
+from get import g_round_qtys
 from settings_ import files_content
 
 import time
 import asyncio
 import traceback
 from pprint import pprint
+
+def s_round(value, round):
+    lst = str(value).split('.')
+    lst[1] = lst[1][:round]
+    if round == 0:
+        return ''.join(lst)
+    return '.'.join(lst)
 
 async def s_cancel_order(data):
     tasks = [
@@ -49,45 +57,33 @@ async def s_pre_preparation():
         session.cancel_all_orders(category='spot')
 
         wallet_balance = {
-            value['coin']: value['availableToWithdraw']
+            value['coin'] + 'USDT': float(value['availableToWithdraw'])
             for value in session.get_wallet_balance(
                 accountType=files_content['ACCOUNT_TYPE']
             )['result']['list'][0]['coin']
-        }
-        tasks = [
-            asyncio.to_thread(lambda symbol=symbol: {
-                symbol:
-                session.get_instruments_info(
-                    category='spot', symbol=symbol + 'USDT'
-                )['result']['list'][0]['lotSizeFilter']['minOrderQty']
-            })
-            for symbol in wallet_balance
-            if symbol != next(
+            if value['coin'] != next(
                 (
                     symbol_if 
                     for symbol_if in files_content['LIMIT_LIST'].split(' ') 
-                    if symbol_if.rstrip('USDT').rstrip('USDC') == symbol
+                    if symbol_if == value['coin']
                 ), 
                 None
             ) and
-            symbol != 'USDT'
-        ]
-        instruments_info = {k: v for value in await asyncio.gather(*tasks) for k, v in value.items()}
-        instruments_info_f = {
-            symbol: (wallet_balance[symbol], len(instruments_info[symbol]))
-            for symbol in instruments_info
-            if float(wallet_balance[symbol]) >= float(instruments_info[symbol])
+            value['coin'] != 'USDT' and
+            value['coin'] != 'USDC'
         }
+        instruments_info = await g_round_qtys(wallet_balance)
         tasks = [
             asyncio.to_thread(session.place_order,
                 category='spot',
-                symbol=symbol + 'USDT',
+                symbol=symbol,
                 orderType='Market',
-                qty=instruments_info_f[symbol][0][:instruments_info_f[symbol][1]],
+                qty=s_round(wallet_balance[symbol], instruments_info[symbol][1][0]),
                 side='Sell',
                 marketUnit='baseCoin'
             )
-            for symbol in instruments_info_f
+            for symbol in instruments_info
+            if wallet_balance[symbol] >= float(instruments_info[symbol][0][0])
         ]
         await asyncio.gather(*tasks)
     except:
