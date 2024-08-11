@@ -1,7 +1,8 @@
 from get import (
     g_data_f,
-    g_changing_data,
-    g_non_changing_data
+    g_densities,
+    g_round_qtys,
+    g_open_orders
 )
 from set import (
     s_data,
@@ -14,16 +15,48 @@ import time
 from pprint import pprint
 import traceback
 
+
+
+'''
+получаем:
+плотности,
+раунды,
+открытые ордера,
+баланс юздт,
+
+открытые ордера:: {
+    false -> buy,
+    false and balance -> sell,
+
+    true and != 4 -> cancel
+
+    
+}
+
+
+
+
+
+
+
+
+'''
+
+
+
 async def main():
     while True:
         await s_pre_preparation()
         
-        changing_data = await g_non_changing_data()
+        densities = await g_densities()
+        round_qtys = await g_round_qtys(densities)
         start = time.time()
-        while start - time.time() < float(files_content['CYCLE_UPDATE']) and changing_data[0]:
+        print('cycle started')
+        while start - time.time() < float(files_content['CYCLE_UPDATE']) and densities:
             data = await g_data_f(
-                *changing_data, 
-                *await g_changing_data(changing_data[0])
+                densities,
+                round_qtys,
+                *await g_open_orders(round_qtys)
             )
             await s_data(data)
 
