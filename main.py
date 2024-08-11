@@ -20,6 +20,8 @@ from pprint import pprint
 async def main():
     while True:        
         print('cycle started')
+        await s_pre_preparation()
+        
         densities = await g_densities()
         round_qtys = await g_round_qtys(densities)
         start = time.time()
@@ -37,7 +39,10 @@ async def main():
             for symbol_ in [   
                 symbol
                 for symbol, tple in densities.items()    
-                if last_prices[symbol] < tple[1]
+                if last_prices[symbol] < tple[1] or (
+                    balance.get(symbol.rstrip('USDT').rstrip('USDT')) and 
+                    balance[symbol.rstrip('USDT').rstrip('USDT')] / int(files_content['ORDER_DIVIDER']) < round_qtys[symbol][0][0]
+                )
             ]:
                 del densities[symbol_]
                 del round_qtys[symbol_]
@@ -45,6 +50,5 @@ async def main():
             await s_data(data)
             
 
-if __name__ == '__main__':
-    asyncio.run(s_pre_preparation())
+if __name__ == '__main__':    
     asyncio.run(main())
