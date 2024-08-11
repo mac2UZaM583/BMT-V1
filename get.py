@@ -104,8 +104,6 @@ async def g_orders(round_qtys):
         category='spot', 
         limit=int(int(files_content['DENSITY_QTY_LIMIT'] * int(files_content['ORDER_DIVIDER'])))
     )['result']['list']
-    print('open_orders')
-    pprint(len(open_orders))
 
     '''SET ⭣
     '''
@@ -216,10 +214,6 @@ async def g_data_f(
         for symbol, tple in densities.items()
         if symbol in non_opened
     ]) 
-    pprint({symbol_: len(value) for symbol_, value in non_opened.items()})
-    pprint({symbol_: len(value) for symbol_, value in opened.items()})
-    pprint(cancel)
-    pprint(open)
     return cancel, open
 
 if __name__ == '__main__':
