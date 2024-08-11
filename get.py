@@ -179,27 +179,15 @@ async def g_data_f(
         side = 'Buy'
         side_density_price = density_tple[1]
         order_type = 'Limit'
-        coins_dividered = (wallet_balance['USDT'] / len(non_opened))
-        pprint(symbol)
-        wallet_divider = next(
-            i 
-            for i in range(order_divider, 0, -1) 
-            if (coins_dividered / i) >= round_qty_float * last_price
-        )
-        qty = s_round((coins_dividered / order_divider) / last_price, round_qty)
+        qty = s_round(((wallet_balance['USDT'] / len(non_opened)) / order_divider) / last_price, round_qty)
         price = lambda i: s_round(side_density_price + round_price_float * (i + 1), round_price)
 
         # SELL
-        if wallet_balance.get(coin) and wallet_balance[coin] >= round_qty_float:
-            wallet_divider = next(
-                i 
-                for i in range(order_divider, 0, -1) 
-                if (wallet_balance[coin] / i) >= round_qty_float * last_price
-            )
+        if wallet_balance.get(coin) and wallet_balance[coin] / order_divider >= round_qty_float:
             side = 'Sell' 
             round_price_float = -round_price_float
             side_density_price = density_tple[0]
-            qty = s_round(wallet_balance[coin] / wallet_divider, round_qty)
+            qty = s_round(wallet_balance[coin] / order_divider, round_qty)
             if last_prices[symbol] < density_tple[0]:
                 order_type = 'Market' 
                 qty = s_round(wallet_balance[coin], round_qty)
@@ -207,7 +195,7 @@ async def g_data_f(
         '''SET ⭣
         '''
         if order_type == 'Limit':
-            for i in range(wallet_divider):
+            for i in range(order_divider):
                 open.append(np.array(
                     (symbol, price(i), qty, side, order_type), 
                     dtype=np.str_
