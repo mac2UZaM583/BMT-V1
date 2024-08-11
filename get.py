@@ -68,8 +68,8 @@ async def g_densities():
             symbol != limit_list_check(symbol) and
             a_diff[1] < b_diff[1] and
             (
-                a_diff_i_0 / b_diff_i_0 >= 1.03 and
-                a_diff_i_0 / b_diff_i_0 <= 1.07
+                a_diff_i_0 / b_diff_i_0 >= float(files_content['DENSITY_PERCENT_THRESHOLD']) and
+                a_diff_i_0 / b_diff_i_0 <= float(files_content['DENSITY_PERCENT_LIMIT'])
             )
         ):
             densities[symbol] = np.array((a_diff_i_0, b_diff_i_0))
