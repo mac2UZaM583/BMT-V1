@@ -1,4 +1,4 @@
-from session_ import session
+from session_ import session, session_
 from settings_ import files_content
 
 import numpy as np
@@ -11,7 +11,7 @@ async def g_densities():
     # SYMBOLS
     symbols = np.array(tuple(
         (value['symbol'], value['lastPrice'])
-        for value in session.get_tickers(
+        for value in session_.get_tickers(
             category='spot'
         )['result']['list']
         if (
@@ -24,7 +24,7 @@ async def g_densities():
         asyncio.create_task(asyncio.to_thread(
             lambda symbol=symbol: np.array((
                 symbol,
-                str(float(session.get_kline(
+                str(float(session_.get_kline(
                     category='spot', 
                     symbol=symbol, 
                     interval='30', 
@@ -43,7 +43,7 @@ async def g_densities():
     # DENSITIES
     orderbook = await asyncio.gather(*[
         asyncio.create_task(asyncio.to_thread(
-            lambda symbol=symbol: session.get_orderbook(
+            lambda symbol=symbol: session_.get_orderbook(
                 category='spot', 
                 symbol=symbol, 
                 limit=50
@@ -81,7 +81,7 @@ async def g_round_qtys(symbols):
                 return len(value[index+1:])
         return 0
     
-    instruments_info = session.get_instruments_info(
+    instruments_info = session_.get_instruments_info(
         category='spot',
     )['result']['list']
 
@@ -223,6 +223,4 @@ async def g_data_f(
     return cancel, open
 
 if __name__ == '__main__':
-    round_qtys = asyncio.run(g_round_qtys(('ETHUSDT', 'BTCUSDT')))
-    # pprint(asyncio.run(g_open_orders(round_qtys)))
-    pprint(round_qtys)
+    pass
