@@ -46,13 +46,14 @@ async def g_densities():
             lambda symbol=symbol: session_.get_orderbook(
                 category='spot', 
                 symbol=symbol, 
-                limit=50
+                limit=200
             )['result']
         ))
         for symbol in symbols
     ])
 
     densities = {}
+    limit = int(files_content['DENSITY_QTY_LIMIT'])
     for value in orderbook:
         a = np.array(value['a'], dtype=np.float32)
         b = np.array(value['b'], dtype=np.float32)
@@ -63,8 +64,8 @@ async def g_densities():
         symbol = np.str_(value['s'])
 
         if (
-            len(densities) < float(files_content['DENSITY_QTY_LIMIT']) and
-            symbol != limit_list_check(symbol.rstrip('USDT').rstrip('USDC')) and
+            len(densities) < limit and
+            symbol != limit_list_check(symbol) and
             a_diff[1] < b_diff[1] and
             (
                 a_diff_i_0 / b_diff_i_0 >= 1.03 and
@@ -72,7 +73,10 @@ async def g_densities():
             )
         ):
             densities[symbol] = np.array((a_diff_i_0, b_diff_i_0))
-    return densities
+    
+    if len(densities) == limit:
+        return densities
+    return {}
 
 async def g_round_qtys(symbols):
     def sub(value):
@@ -98,8 +102,7 @@ async def g_round_qtys(symbols):
         if value['symbol'] in symbols
     }
     
-
-async def g_orders(round_qtys):
+def g_non_opened_orders(round_qtys, last_prices, densities, balance):
     open_orders = session.get_open_orders(
         category='spot', 
         limit=int(int(files_content['DENSITY_QTY_LIMIT'] * int(files_content['ORDER_DIVIDER'])))
@@ -108,7 +111,6 @@ async def g_orders(round_qtys):
     '''SET ⭣
     '''
     non_opened = {}
-    opened = {}
     for symbol in round_qtys:
         lst = []
         for side in ('Sell', 'Buy'):
@@ -122,11 +124,16 @@ async def g_orders(round_qtys):
             ))
             lst.extend(filtered)
         
-        if len(lst) != int(files_content['ORDER_DIVIDER']):
+        coin = symbol.rstrip('USDT').rstrip('USDC')
+        if (
+            len(lst) != int(files_content['ORDER_DIVIDER']) or 
+            (
+                last_prices[symbol] < densities[symbol][0] and
+                balance.get(coin) and balance[coin] >= round_qtys[symbol][0][0]
+            )
+        ):
             non_opened[symbol] = lst
-        else:
-            opened[symbol] = lst
-    return non_opened, opened
+    return non_opened
 
 def g_wallet_balance():
     return {
@@ -136,12 +143,22 @@ def g_wallet_balance():
         )['result']['list'][0]['coin']
     }
 
+def g_last_prices(symbols):
+    return {
+        value['symbol']:
+        float(value['lastPrice'])
+        for value in session.get_tickers(
+            category='spot',
+        )['result']['list']
+        if value['symbol'] in symbols
+    }
+
 async def g_data_f(
     densities, 
     round_qtys, 
-    non_opened,
-    opened,
-    wallet_balance
+    wallet_balance,
+    last_prices,
+    non_opened
 ):
     async def g_data_fcc(
             symbol, 
@@ -162,24 +179,35 @@ async def g_data_f(
         side = 'Buy'
         side_density_price = density_tple[1]
         order_type = 'Limit'
-        qty = s_round(((wallet_balance['USDT'] / len(non_opened)) / order_divider) / last_price, round_qty)
+        coins_dividered = (wallet_balance['USDT'] / len(non_opened))
+        pprint(symbol)
+        wallet_divider = next(
+            i 
+            for i in range(order_divider, 0, -1) 
+            if (coins_dividered / i) >= round_qty_float * last_price
+        )
+        qty = s_round((coins_dividered / order_divider) / last_price, round_qty)
         price = lambda i: s_round(side_density_price + round_price_float * (i + 1), round_price)
 
         # SELL
         if wallet_balance.get(coin) and wallet_balance[coin] >= round_qty_float:
-            wallet_divider = next(i for i in range(order_divider, 0, -1) if (wallet_balance[coin] / i) >= round_qty_float)
+            wallet_divider = next(
+                i 
+                for i in range(order_divider, 0, -1) 
+                if (wallet_balance[coin] / i) >= round_qty_float * last_price
+            )
             side = 'Sell' 
             round_price_float = -round_price_float
             side_density_price = density_tple[0]
             qty = s_round(wallet_balance[coin] / wallet_divider, round_qty)
-            if density_tple[0] <  last_price:
+            if last_prices[symbol] < density_tple[0]:
                 order_type = 'Market' 
                 qty = s_round(wallet_balance[coin], round_qty)
         
         '''SET ⭣
         '''
         if order_type == 'Limit':
-            for i in range(order_divider):
+            for i in range(wallet_divider):
                 open.append(np.array(
                     (symbol, price(i), qty, side, order_type), 
                     dtype=np.str_
@@ -190,6 +218,7 @@ async def g_data_f(
     global cancel, open
     cancel = []
     open = []
+
     cancel = tuple(
         (symbol, v['orderId'])
         for symbol, value in non_opened.items() for v in value
@@ -200,10 +229,7 @@ async def g_data_f(
             symbol.rstrip('USDT').rstrip('USDC'),
             tple, 
             int(files_content['ORDER_DIVIDER']),
-            float(session.get_tickers(
-                category='spot', 
-                symbol=symbol
-            )['result']['list'][0]['lastPrice']),
+            last_prices[symbol],
             round_qtys[symbol][1][1],
             round_qtys[symbol][2][1],  
             round_qtys[symbol][0][0],
@@ -217,4 +243,6 @@ async def g_data_f(
     return cancel, open
 
 if __name__ == '__main__':
-    pass
+    pprint(
+        asyncio.run(g_round_qtys(('ATHUSDT',)))
+    )

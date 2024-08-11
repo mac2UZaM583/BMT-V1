@@ -15,9 +15,9 @@ def s_round(value, round):
     return ''.join(lst).rstrip('0')
 
 limit_list_check = lambda coin: next((
-    coin_
+    coin
     for coin_ in files_content['LIMIT_LIST'].split(' ')
-    if coin_ == coin
+    if coin_ == coin.rstrip('USDT').rstrip('USDC')
 ), None)
 
 async def s_cancel_order(data):
