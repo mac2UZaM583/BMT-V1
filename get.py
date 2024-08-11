@@ -4,7 +4,6 @@ from settings_ import files_content
 import numpy as np
 import asyncio
 from pprint import pprint
-import time
 
 async def g_densities():
     from set import limit_list_check
@@ -76,137 +75,108 @@ async def g_densities():
     return densities
 
 async def g_round_qtys(symbols):
-    async def g_round_qty(symbol):
-        instruments_info = session.get_instruments_info(
-            category='spot',
-            symbol=symbol
-        )['result']['list'][0]
-        tple = (
-            instruments_info['lotSizeFilter']['minOrderQty'],
-            instruments_info['lotSizeFilter']['basePrecision'],
-            instruments_info['priceFilter']['tickSize']
-        )
-        def sub(value):
-            for index, el in enumerate(value):
-                if el == '.':
-                    return len(value[index+1:])
-            return 0
-                
-        '''SET ⭣
-        '''
-        return {
-            symbol: 
-            (
-                tple,
-                tuple(map(lambda v: sub(v), tple))
-            )
-        }
+    def sub(value):
+        for index, el in enumerate(value):
+            if el == '.':
+                return len(value[index+1:])
+        return 0
     
-    return {
-        k: v for dct in 
-        await asyncio.gather(*[
-            asyncio.create_task(g_round_qty(symbol))
-            for symbol in symbols
-        ]) 
-        for k, v in dct.items()
-    }
-
-async def g_open_orders(round_qtys):
-    from set import limit_list_check
-
-    async def g_wallet_balance():
-        data = session.get_wallet_balance(
-            accountType=files_content['ACCOUNT_TYPE']
-        )['result']['list'][0]['coin']
-        return {
-            dct['coin']: float(dct['availableToWithdraw'])
-            for dct in data
-        }
-
-    open_orders, balance = await asyncio.gather(*tuple(map(
-        asyncio.create_task,
-        (
-            asyncio.to_thread(
-                lambda: session.get_open_orders(
-                    category='spot'
-                )['result']['list']
-            ),
-            g_wallet_balance()
-        )
-    )))
+    instruments_info = session.get_instruments_info(
+        category='spot',
+    )['result']['list']
 
     '''SET ⭣
     '''
+    return {
+        value['symbol']: 
+        tuple(map(lambda v: (float(v), sub(v)), (
+            value['lotSizeFilter']['minOrderQty'],
+            value['lotSizeFilter']['basePrecision'],
+            value['priceFilter']['tickSize']
+        )))
+        for value in instruments_info
+        if value['symbol'] in symbols
+    }
+    
+
+async def g_orders(round_qtys):
+    open_orders = session.get_open_orders(
+        category='spot', 
+        limit=int(int(files_content['DENSITY_QTY_LIMIT'] * int(files_content['ORDER_DIVIDER'])))
+    )['result']['list']
+    print('open_orders')
+    pprint(len(open_orders))
+
+    '''SET ⭣
+    '''
+    non_opened = {}
     opened = {}
-    non_existent = {}
     for symbol in round_qtys:
-        lst = None
+        lst = []
         for side in ('Sell', 'Buy'):
-            lst = tuple(filter(
+            filtered = tuple(filter(
                 lambda v: (
+                    v['symbol'] == symbol and
                     v['side'] == side and 
-                    v['orderType'] == 'Limit' and 
-                    v['symbol'] == symbol
+                    v['orderType'] == 'Limit'
                 ),
                 open_orders
             ))
-            if lst:
-                break
+            lst.extend(filtered)
         
-        coin = symbol.rstrip('USDT').rstrip('USDC')
-        coin_balance = next(
-            (
-                balance[coin_] 
-                for coin_ in balance 
-                if coin_ != limit_list_check(coin_) and (
-                    coin_ == coin and
-                    balance[coin_] / int(files_content['ORDER_DIVIDER']) >= float(round_qtys[symbol][0][0])
-                )
-            ), 
-            0
-        )
-        if lst:
-            opened[symbol] = lst
         if len(lst) != int(files_content['ORDER_DIVIDER']):
-            non_existent[symbol] = coin_balance
-    return opened, non_existent, balance['USDT']
+            non_opened[symbol] = lst
+        else:
+            opened[symbol] = lst
+    return non_opened, opened
+
+def g_wallet_balance():
+    return {
+        dct['coin']: float(dct['availableToWithdraw'])
+        for dct in session.get_wallet_balance(
+            accountType=files_content['ACCOUNT_TYPE']
+        )['result']['list'][0]['coin']
+    }
 
 async def g_data_f(
     densities, 
     round_qtys, 
+    non_opened,
     opened,
-    non_existent,
-    balance_usdt
+    wallet_balance
 ):
     async def g_data_fcc(
-            density_tple, 
             symbol, 
+            coin,
+            density_tple, 
+            order_divider,
             last_price,
             round_qty,
             round_price,
+            round_qty_float,
             round_price_float,
-            non_existent,
-            balance_usdt,
-            order_divider
+            non_opened,
+            wallet_balance
     ):
         from set import s_round
-        print(symbol)
+
         # BUY
         side = 'Buy'
         side_density_price = density_tple[1]
         order_type = 'Limit'
-        qty = s_round((balance_usdt / len(non_existent) / order_divider) / last_price, round_qty)
+        qty = s_round(((wallet_balance['USDT'] / len(non_opened)) / order_divider) / last_price, round_qty)
         price = lambda i: s_round(side_density_price + round_price_float * (i + 1), round_price)
 
         # SELL
-        if non_existent[symbol]:
+        if wallet_balance.get(coin) and wallet_balance[coin] >= round_qty_float:
+            wallet_divider = next(i for i in range(order_divider, 0, -1) if (wallet_balance[coin] / i) >= round_qty_float)
             side = 'Sell' 
             round_price_float = -round_price_float
             side_density_price = density_tple[0]
-            qty = s_round(non_existent[symbol] / order_divider, round_qty)
+            qty = s_round(wallet_balance[coin] / wallet_divider, round_qty)
             if density_tple[0] <  last_price:
                 order_type = 'Market' 
-                qty = s_round(non_existent[symbol], round_qty)
+                qty = s_round(wallet_balance[coin], round_qty)
         
         '''SET ⭣
         '''
@@ -224,29 +194,35 @@ async def g_data_f(
     open = []
     cancel = tuple(
         (symbol, v['orderId'])
-        for symbol, value in opened.items() for v in value
-        if len(value) != int(files_content['ORDER_DIVIDER'])
+        for symbol, value in non_opened.items() for v in value
     )
-    # pprint(opened)
     await asyncio.gather(*[
         asyncio.create_task(g_data_fcc(
-            tple, 
             symbol, 
+            symbol.rstrip('USDT').rstrip('USDC'),
+            tple, 
+            int(files_content['ORDER_DIVIDER']),
             float(session.get_tickers(
                 category='spot', 
                 symbol=symbol
             )['result']['list'][0]['lastPrice']),
             round_qtys[symbol][1][1],
-            round_qtys[symbol][1][2],    
-            float(round_qtys[symbol][0][2]),
-            non_existent,
-            balance_usdt,
-            int(files_content['ORDER_DIVIDER'])
+            round_qtys[symbol][2][1],  
+            round_qtys[symbol][0][0],
+            round_qtys[symbol][2][0],
+            non_opened,
+            wallet_balance
         ))
         for symbol, tple in densities.items()
-        if not opened.get(symbol)
+        if symbol in non_opened
     ]) 
+    pprint({symbol_: len(value) for symbol_, value in non_opened.items()})
+    pprint({symbol_: len(value) for symbol_, value in opened.items()})
+    pprint(cancel)
+    pprint(open)
     return cancel, open
 
 if __name__ == '__main__':
-    pass
+    round_qtys = asyncio.run(g_round_qtys(('ETHUSDT', 'BTCUSDT')))
+    # pprint(asyncio.run(g_open_orders(round_qtys)))
+    pprint(round_qtys)

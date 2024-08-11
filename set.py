@@ -2,7 +2,6 @@ from session_ import session
 from get import g_round_qtys
 from settings_ import files_content
 
-import time
 import asyncio
 import traceback
 from pprint import pprint
@@ -33,23 +32,19 @@ async def s_cancel_order(data):
     ])
 
 async def s_place_orders(data):
-    try:
-        time.sleep(float(files_content['DENSITY_QTY_LIMIT']) / 15)
-        return await asyncio.gather(*[
-            asyncio.create_task(asyncio.to_thread(
-                session.place_order,
-                category='spot',
-                symbol=symbol,
-                orderType=order_type,
-                price=price,
-                qty=qty,
-                side=side,
-                marketUnit='baseCoin'
-            ))
-            for symbol, price, qty, side, order_type in data
-        ])
-    except:
-        traceback.print_exc()
+    return await asyncio.gather(*[
+        asyncio.create_task(asyncio.to_thread(
+            session.place_order,
+            category='spot',
+            symbol=symbol,
+            orderType=order_type,
+            price=price,
+            qty=qty,
+            side=side,
+            marketUnit='baseCoin'
+        ))
+        for symbol, price, qty, side, order_type in data
+    ])
 
 async def s_data(data):
     return (
@@ -76,12 +71,12 @@ async def s_pre_preparation():
                 category='spot',
                 symbol=symbol,
                 orderType='Market',
-                qty=s_round(wallet_balance[symbol], instruments_info[symbol][1][1]),
+                qty=s_round(wallet_balance[symbol], instruments_info[symbol][0][1]),
                 side='Sell',
                 marketUnit='baseCoin'
             )
             for symbol in instruments_info
-            if wallet_balance[symbol] >= float(instruments_info[symbol][0][0])
+            if wallet_balance[symbol] >= instruments_info[symbol][0][0]
         ])
     except:
         traceback.print_exc()
