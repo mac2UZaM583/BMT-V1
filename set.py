@@ -8,10 +8,12 @@ import traceback
 from pprint import pprint
 
 def s_round(value, round):
-    lst = str(f'{value:.{round}f}').split('.')
+    lst = str(f'{value:.{20}f}').split('.')
     if len(lst) > 1:
         lst[1] = lst[1][:round]
-    return '.'.join(lst).rstrip('0')
+    if round > 0:
+        return '.'.join(lst).rstrip('0')
+    return ''.join(lst).rstrip('0')
 
 limit_list_check = lambda coin: next((
     coin_

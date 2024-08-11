@@ -165,7 +165,8 @@ async def g_open_orders(round_qtys):
             ), 
             0
         )
-        opened[symbol] = lst
+        if lst:
+            opened[symbol] = lst
         if len(lst) != int(files_content['ORDER_DIVIDER']):
             non_existent[symbol] = coin_balance
     return opened, non_existent, balance['USDT']
@@ -189,7 +190,7 @@ async def g_data_f(
             order_divider
     ):
         from set import s_round
-
+        print(symbol)
         # BUY
         side = 'Buy'
         side_density_price = density_tple[1]
@@ -226,7 +227,7 @@ async def g_data_f(
         for symbol, value in opened.items() for v in value
         if len(value) != int(files_content['ORDER_DIVIDER'])
     )
-    pprint(opened)
+    # pprint(opened)
     await asyncio.gather(*[
         asyncio.create_task(g_data_fcc(
             tple, 
@@ -243,10 +244,8 @@ async def g_data_f(
             int(files_content['ORDER_DIVIDER'])
         ))
         for symbol, tple in densities.items()
-        if not opened[symbol]
+        if not opened.get(symbol)
     ]) 
-    # pprint(opened)
-    # pprint(cancel)
     return cancel, open
 
 if __name__ == '__main__':

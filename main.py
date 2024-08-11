@@ -52,7 +52,7 @@ async def main():
         round_qtys = await g_round_qtys(densities)
         start = time.time()
         print('cycle started')
-        while start - time.time() < float(files_content['CYCLE_UPDATE']) and densities:
+        while time.time() - start < float(files_content['CYCLE_UPDATE']) and densities:
             data = await g_data_f(
                 densities,
                 round_qtys,
