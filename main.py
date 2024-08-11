@@ -23,6 +23,7 @@ async def main():
         await s_pre_preparation()
 
         densities = await g_densities()
+        pprint(densities)
         round_qtys = await g_round_qtys(densities)
         start = time.time()
         while time.time() - start < float(files_content['CYCLE_UPDATE']) and densities:
@@ -41,11 +42,12 @@ async def main():
                 for symbol, tple in densities.items()    
                 if last_prices[symbol] < tple[1] or (
                     balance.get(symbol.rstrip('USDT').rstrip('USDT')) and 
-                    balance[symbol.rstrip('USDT').rstrip('USDT')] / int(files_content['ORDER_DIVIDER']) < round_qtys[symbol][0][0]
+                    balance[symbol.rstrip('USDT').rstrip('USDC')] / int(files_content['ORDER_DIVIDER']) >= round_qtys[symbol][0][0]
                 )
             ]:
                 del densities[symbol_]
                 del round_qtys[symbol_]
+            pprint(densities)
             pprint(len(densities))
             
 

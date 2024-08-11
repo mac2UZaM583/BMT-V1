@@ -232,5 +232,5 @@ async def g_data_f(
 
 if __name__ == '__main__':
     pprint(
-        asyncio.run(g_round_qtys(('ATHUSDT',)))
+        asyncio.run(g_round_qtys(('PIRATEUSDT',)))
     )
